@@ -39,17 +39,10 @@ int lerSensorMedia(int pino) {
   return (int)(soma / N_AMOSTRAS);
 }
 
-
-// ─── Função: irrigação via servo ─────────────────────────
-/*String irrigar(int umidadeAtual) {
-  if (umidadeAtual < UMID_BOM_MIN) {
-    servo.write(90);
-    return "Valvula aberta";
-  } else {
-    servo.write(5);
-    return "Solo umido";
-  }
-}*/
+// ─── Função: converte ADC → pH ───────────────────────────
+float adcParaPH(int adc) {
+  return map(adc, 0, 1023, 0, 1400) / 100.0;
+}
 
 // ─── Função: avalia estado de saúde ─────────────────────
 String avaliarEstado(int valor, 
@@ -67,7 +60,6 @@ String recomendacao(const String& sensor, const String& estado, int valor,
   if (estado == "BOM") return "Tudo bem";
   
   if (sensor == "UMIDADE") {
-    return irrigar(valor);
   }
  
   return "Monitorando";
@@ -177,7 +169,6 @@ void loop() {
     atualizarLED(estadoUmidade);
 
     // Umidade
-    //irrigar(adcUmidade);
     lcd_1.clear();
     lcd_1.print("UMID: "); lcd_1.print(adcUmidade);
     lcd_1.setCursor(0, 1);
