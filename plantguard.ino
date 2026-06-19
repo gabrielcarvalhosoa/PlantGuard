@@ -1,10 +1,10 @@
 // ============================================================
-//   Monitor de Saúde da Samambaia — Calibração de Sensores
-//   Sensores: Higrômetro (umidade), 
-//   Planta simulada: Samambaia
+//   Monitor de Saúde da Horta
+//   Sensor: Higrômetro (umidade)
 // ============================================================
 
 #include <Adafruit_LiquidCrystal.h>
+#include <Servo.h>
 Adafruit_LiquidCrystal lcd_1(0); 
 
 // ─── Pinos dos sensores ──────────────────────────────────
@@ -15,7 +15,9 @@ const int PIN_RED   = 8;
 const int PIN_GREEN = 9;
 const int PIN_BLUE  = 10;
 
-// ─── Faixas ideais (unidades ADC 0–1023) ─────────────────
+// ─── Servo ───────────────────────────────────────────────
+Servo servo;
+
 const int UMID_CRITICO_MIN = 0;
 const int UMID_MEDIO_MIN   = 400;
 const int UMID_BOM_MIN     = 600;
@@ -37,10 +39,17 @@ int lerSensorMedia(int pino) {
   return (int)(soma / N_AMOSTRAS);
 }
 
-// ─── Função: irrigação via válvula senoide ─────────────────────────
-String irrigar(int umidadeAtual) {
-  
-}
+
+// ─── Função: irrigação via servo ─────────────────────────
+/*String irrigar(int umidadeAtual) {
+  if (umidadeAtual < UMID_BOM_MIN) {
+    servo.write(90);
+    return "Valvula aberta";
+  } else {
+    servo.write(5);
+    return "Solo umido";
+  }
+}*/
 
 // ─── Função: avalia estado de saúde ─────────────────────
 String avaliarEstado(int valor, 
@@ -55,12 +64,12 @@ String avaliarEstado(int valor,
 // ─── Função: recomendação de ação ────────────────────────
 String recomendacao(const String& sensor, const String& estado, int valor,
                     int bomMin, int bomMax) {
-  if (estado == "BOM") {
-    return "Tudo bem";
-  }
+  if (estado == "BOM") return "Tudo bem";
+  
   if (sensor == "UMIDADE") {
     return irrigar(valor);
   }
+ 
   return "Monitorando";
 }
 
@@ -137,6 +146,7 @@ void setup() {
   digitalWrite(PIN_GREEN, LOW);
   digitalWrite(PIN_BLUE,  LOW);
 
+  servo.attach(6);
 }
 
 // ─── Loop principal ──────────────────────────────────────
@@ -146,7 +156,7 @@ void loop() {
     char tecla = Serial.read();
     if (tecla == 't' || tecla == 'T') {
       int adcUmidade = lerSensorMedia(PIN_UMIDADE);
-      
+
       String aUmi = recomendacao("UMIDADE", avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX), adcUmidade, UMID_BOM_MIN, UMID_BOM_MAX);
 
       exibeAcoes(aUmi);
@@ -160,14 +170,14 @@ void loop() {
   if (agora - ultimaLeitura >= INTERVALO) {
 
     int adcUmidade = lerSensorMedia(PIN_UMIDADE);
-
+   
     String estadoUmidade = avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX);
 
     // ── Atualiza LED conforme pior estado ──
     atualizarLED(estadoUmidade);
 
     // Umidade
-    irrigar(adcUmidade);
+    //irrigar(adcUmidade);
     lcd_1.clear();
     lcd_1.print("UMID: "); lcd_1.print(adcUmidade);
     lcd_1.setCursor(0, 1);
