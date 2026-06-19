@@ -14,6 +14,7 @@ const int PIN_UMIDADE  = A1;
 const int PIN_RED   = 8;
 const int PIN_GREEN = 9;
 const int PIN_BLUE  = 10;
+const int VALVULA = 13;
 
 // ─── Servo ───────────────────────────────────────────────
 Servo servo;
@@ -110,14 +111,16 @@ void exibeAcoes(String acaoUmidade) {
 // ─── Valvula Solenoide ───────────────────────────────────
 String valvula(const String& estadoUmidade){
   if (estadoUmidade == "BOM") {
-    digitalWrite(13, LOW);
+    digitalWrite(VALVULA, LOW);
   } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
-    digitalWrite(13, HIGH);
+    digitalWrite(VALVULA, HIGH);
   }
 }
 
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
+
+  // ── Inicializacao do LCD ──────────────────────
   lcd_1.begin(16, 2);
   lcd_1.setCursor(0, 0);
   lcd_1.print("PlantGuard");
@@ -137,12 +140,11 @@ void setup() {
   pinMode(PIN_RED,   OUTPUT);
   pinMode(PIN_GREEN, OUTPUT);
   pinMode(PIN_BLUE,  OUTPUT);
+  pinMode(VALVULA, OUTPUT);
 
   digitalWrite(PIN_RED,   LOW);
   digitalWrite(PIN_GREEN, LOW);
   digitalWrite(PIN_BLUE,  LOW);
-
-  servo.attach(6);
 }
 
 // ─── Loop principal ──────────────────────────────────────
