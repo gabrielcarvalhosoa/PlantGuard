@@ -39,11 +39,6 @@ int lerSensorMedia(int pino) {
   return (int)(soma / N_AMOSTRAS);
 }
 
-// ─── Função: converte ADC → pH ───────────────────────────
-float adcParaPH(int adc) {
-  return map(adc, 0, 1023, 0, 1400) / 100.0;
-}
-
 // ─── Função: avalia estado de saúde ─────────────────────
 String avaliarEstado(int valor, 
                      int criMin, int medMin, int bomMin,
@@ -112,6 +107,15 @@ void exibeAcoes(String acaoUmidade) {
   delay(500);
 }
 
+// ─── Valvula Solenoide ───────────────────────────────────
+String valvula(const String& estadoUmidade){
+  if (estadoUmidade == "BOM") {
+    digitalWrite(13, LOW);
+  } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
+    digitalWrite(13, HIGH);
+  }
+}
+
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
   lcd_1.begin(16, 2);
@@ -167,6 +171,9 @@ void loop() {
 
     // ── Atualiza LED conforme pior estado ──
     atualizarLED(estadoUmidade);
+
+    // ── Aciona a valvula solenoide se necessario ──
+    valvula(estadoUmidade);
 
     // Umidade
     lcd_1.clear();
