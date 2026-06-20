@@ -1,4 +1,4 @@
-# PlantGuard v1.0 - Monitor de Saúde da Horta 🌿
+# PlantGuard v1.1 - Monitor de Saúde da Horta 🌿
 
 O **PlantGuard** é um sistema automatizado baseado em Arduino para monitoramento de solo e irrigação inteligente. Configurado inicialmente para cuidar de uma **Samambaia**, o projeto lê a umidade do solo, categoriza a saúde da planta em tempo real, atualiza um display LCD, altera as cores de um LED RGB para alertas visuais e aciona uma válvula solenoide automaticamente quando a planta precisa de água.
 
