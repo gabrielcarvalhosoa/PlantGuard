@@ -3,9 +3,11 @@
 //   Sensor: Higrômetro (umidade)
 // ============================================================
 
-#include <Adafruit_LiquidCrystal.h>
+#include <LCD-I2C.h>
 #include <Servo.h>
-Adafruit_LiquidCrystal lcd_1(0);
+
+// ALTERADO: construtor da LCD-I2C recebe (endereçoI2C, colunas, linhas)
+LCD_I2C lcd_1(0x27, 16, 2);
 
 // ─── Pinos dos sensores ──────────────────────────────────
 const int PIN_UMIDADE  = A1;
@@ -53,7 +55,6 @@ String avaliarEstado(int valor,
 }
 
 // ─── Função: recomendação de ação ────────────────────────
-// CORREÇÃO: lógica de umidade implementada
 String recomendacao(const String& sensor, const String& estado, int valor,
                     int bomMin, int bomMax) {
   if (estado == "BOM") return "Tudo bem";
@@ -67,9 +68,6 @@ String recomendacao(const String& sensor, const String& estado, int valor,
 }
 
 // ─── Função: atualiza LED RGB conforme pior estado ───────
-// CRITICO → Vermelho  (R=HIGH, G=LOW,  B=LOW)
-// MEDIO   → Amarelo   (R=HIGH, G=HIGH, B=LOW)
-// BOM     → Verde     (R=LOW,  G=HIGH, B=LOW)
 void atualizarLED(const String& estadoUmidade) {
   String piorEstado = "BOM";
 
@@ -113,7 +111,6 @@ void exibeAcoes(String acaoUmidade) {
 }
 
 // ─── Válvula Solenoide ────────────────────────────────────
-// CORREÇÃO: tipo de retorno alterado de String para void
 void valvula(const String& estadoUmidade) {
   if (estadoUmidade == "BOM") {
     digitalWrite(PIN_VALVULA, LOW);
@@ -124,7 +121,11 @@ void valvula(const String& estadoUmidade) {
 
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
-  lcd_1.begin(16, 2);
+  // ALTERADO: LCD-I2C inicializa com begin(&Wire), depois liga display e backlight
+  lcd_1.begin(&Wire);
+  lcd_1.display();
+  lcd_1.backlight();
+
   lcd_1.setCursor(0, 0);
   lcd_1.print("PlantGuard");
   lcd_1.setCursor(0, 1);
@@ -143,7 +144,7 @@ void setup() {
   pinMode(PIN_RED,     OUTPUT);
   pinMode(PIN_GREEN,   OUTPUT);
   pinMode(PIN_BLUE,    OUTPUT);
-  pinMode(PIN_VALVULA, OUTPUT);  // CORREÇÃO: pino da válvula configurado
+  pinMode(PIN_VALVULA, OUTPUT);
 
   digitalWrite(PIN_RED,     LOW);
   digitalWrite(PIN_GREEN,   LOW);
@@ -185,13 +186,9 @@ void loop() {
       UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX
     );
 
-    // ── Atualiza LED conforme pior estado ──
     atualizarLED(estadoUmidade);
-
-    // ── Aciona a válvula solenoide se necessário ──
     valvula(estadoUmidade);
 
-    // ── Exibe no LCD e Serial ──
     lcd_1.clear();
     lcd_1.print("UMID: ");
     lcd_1.print(adcUmidade);
