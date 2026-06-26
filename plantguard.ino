@@ -5,6 +5,7 @@
 
 #include <LCD-I2C.h>
 #include <Servo.h>
+#include <Wire.h>
 
 // ALTERADO: construtor da LCD-I2C recebe (endereçoI2C, colunas, linhas)
 LCD_I2C lcd_1(0x27, 16, 2);
@@ -122,6 +123,7 @@ void valvula(const String& estadoUmidade) {
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
   // ALTERADO: LCD-I2C inicializa com begin(&Wire), depois liga display e backlight
+      Wire.begin();
   lcd_1.begin(&Wire);
   lcd_1.display();
   lcd_1.backlight();
