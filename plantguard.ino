@@ -5,16 +5,18 @@
 
 #include <Adafruit_LiquidCrystal.h>
 #include <Servo.h>
-Adafruit_LiquidCrystal lcd_1(0); 
+Adafruit_LiquidCrystal lcd_1(0);
 
 // ─── Pinos dos sensores ──────────────────────────────────
-const int PIN_UMIDADE  = A1;  
+const int PIN_UMIDADE  = A1;
 
 // ─── LED RGB ─────────────────────────────────────────────
 const int PIN_RED   = 8;
 const int PIN_GREEN = 9;
 const int PIN_BLUE  = 10;
-const int VALVULA = 13;
+
+// ─── Válvula solenoide ────────────────────────────────────
+const int PIN_VALVULA = 13;
 
 // ─── Servo ───────────────────────────────────────────────
 Servo servo;
@@ -41,7 +43,7 @@ int lerSensorMedia(int pino) {
 }
 
 // ─── Função: avalia estado de saúde ─────────────────────
-String avaliarEstado(int valor, 
+String avaliarEstado(int valor,
                      int criMin, int medMin, int bomMin,
                      int bomMax, int medMax, int criMax) {
   if (valor >= bomMin && valor <= bomMax) return "BOM";
@@ -51,13 +53,16 @@ String avaliarEstado(int valor,
 }
 
 // ─── Função: recomendação de ação ────────────────────────
+// CORREÇÃO: lógica de umidade implementada
 String recomendacao(const String& sensor, const String& estado, int valor,
                     int bomMin, int bomMax) {
   if (estado == "BOM") return "Tudo bem";
-  
+
   if (sensor == "UMIDADE") {
+    if (valor < bomMin) return "Regar a planta";
+    if (valor > bomMax) return "Solo encharcado";
   }
- 
+
   return "Monitorando";
 }
 
@@ -66,7 +71,6 @@ String recomendacao(const String& sensor, const String& estado, int valor,
 // MEDIO   → Amarelo   (R=HIGH, G=HIGH, B=LOW)
 // BOM     → Verde     (R=LOW,  G=HIGH, B=LOW)
 void atualizarLED(const String& estadoUmidade) {
-
   String piorEstado = "BOM";
 
   if (estadoUmidade == "CRITICO") {
@@ -108,19 +112,18 @@ void exibeAcoes(String acaoUmidade) {
   delay(500);
 }
 
-// ─── Valvula Solenoide ───────────────────────────────────
-String valvula(const String& estadoUmidade){
+// ─── Válvula Solenoide ────────────────────────────────────
+// CORREÇÃO: tipo de retorno alterado de String para void
+void valvula(const String& estadoUmidade) {
   if (estadoUmidade == "BOM") {
-    digitalWrite(VALVULA, LOW);
+    digitalWrite(PIN_VALVULA, LOW);
   } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
-    digitalWrite(VALVULA, HIGH);
+    digitalWrite(PIN_VALVULA, HIGH);
   }
 }
 
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
-
-  // ── Inicializacao do LCD ──────────────────────
   lcd_1.begin(16, 2);
   lcd_1.setCursor(0, 0);
   lcd_1.print("PlantGuard");
@@ -137,14 +140,17 @@ void setup() {
 
   Serial.begin(9600);
 
-  pinMode(PIN_RED,   OUTPUT);
-  pinMode(PIN_GREEN, OUTPUT);
-  pinMode(PIN_BLUE,  OUTPUT);
-  pinMode(VALVULA, OUTPUT);
+  pinMode(PIN_RED,     OUTPUT);
+  pinMode(PIN_GREEN,   OUTPUT);
+  pinMode(PIN_BLUE,    OUTPUT);
+  pinMode(PIN_VALVULA, OUTPUT);  // CORREÇÃO: pino da válvula configurado
 
-  digitalWrite(PIN_RED,   LOW);
-  digitalWrite(PIN_GREEN, LOW);
-  digitalWrite(PIN_BLUE,  LOW);
+  digitalWrite(PIN_RED,     LOW);
+  digitalWrite(PIN_GREEN,   LOW);
+  digitalWrite(PIN_BLUE,    LOW);
+  digitalWrite(PIN_VALVULA, LOW);
+
+  servo.attach(6);
 }
 
 // ─── Loop principal ──────────────────────────────────────
@@ -155,7 +161,12 @@ void loop() {
     if (tecla == 't' || tecla == 'T') {
       int adcUmidade = lerSensorMedia(PIN_UMIDADE);
 
-      String aUmi = recomendacao("UMIDADE", avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX), adcUmidade, UMID_BOM_MIN, UMID_BOM_MAX);
+      String aUmi = recomendacao(
+        "UMIDADE",
+        avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN,
+                      UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX),
+        adcUmidade, UMID_BOM_MIN, UMID_BOM_MAX
+      );
 
       exibeAcoes(aUmi);
       ultimaLeitura = millis();
@@ -168,21 +179,30 @@ void loop() {
   if (agora - ultimaLeitura >= INTERVALO) {
 
     int adcUmidade = lerSensorMedia(PIN_UMIDADE);
-   
-    String estadoUmidade = avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX);
+
+    String estadoUmidade = avaliarEstado(
+      adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN,
+      UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX
+    );
 
     // ── Atualiza LED conforme pior estado ──
     atualizarLED(estadoUmidade);
 
-    // ── Aciona a valvula solenoide se necessario ──
+    // ── Aciona a válvula solenoide se necessário ──
     valvula(estadoUmidade);
 
-    // Umidade
+    // ── Exibe no LCD e Serial ──
     lcd_1.clear();
-    lcd_1.print("UMID: "); lcd_1.print(adcUmidade);
+    lcd_1.print("UMID: ");
+    lcd_1.print(adcUmidade);
     lcd_1.setCursor(0, 1);
-    lcd_1.print("Status: "); lcd_1.print(estadoUmidade);
-    delay(1500);
+    lcd_1.print("Status: ");
+    lcd_1.print(estadoUmidade);
+
+    Serial.print("Umidade: ");
+    Serial.print(adcUmidade);
+    Serial.print(" | Status: ");
+    Serial.println(estadoUmidade);
 
     ultimaLeitura = millis();
   }
