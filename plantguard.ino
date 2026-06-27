@@ -6,7 +6,6 @@
 
 // ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
 #include <LCD-I2C.h>
-#include <Servo.h>
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
