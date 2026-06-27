@@ -91,7 +91,7 @@
     return "CRITICO";
   }
   
-  // ─── Temperatura (float °C) ──────────────────────────
+  // ─── Temperatura (float °C) ───────────────────────────
   String avaliarEstadoTemp(float valor) {
     if (valor >= TEMP_BOM_MIN && valor <= TEMP_BOM_MAX) return "BOM";
     if ((valor >= TEMP_MEDIO_MIN && valor < TEMP_BOM_MIN) ||
@@ -100,28 +100,30 @@
   }
 
 
-// ─── Função: recomendação de ação (umidade) ──────────────
-String recomendacaoUmidade(const String& estado, int valor) {
-  if (estado == "BOM")    return "Umidade OK";
-  if (valor < UMID_BOM_MIN) return "Regar a horta";
-  if (valor > UMID_BOM_MAX) return "Solo encharcado";
-  return "Monitorando";
-}
+// ─── Recomendação de ação ─────────────────────────────────────────────────────────
+  // ─── Umidade ─────────────────────────────────
+  String recomendacaoUmidade(const String& estado, int valor) {
+    if (estado == "BOM")    return "Umidade ok";
+    if (valor < UMID_BOM_MIN) return "Regar a horta";
+    if (valor > UMID_BOM_MAX) return "Solo encharcado";
+    return "Monitorando";
+  }
+  
+  // ─── Temperatura ────────────────────────────
+  String recomendacaoTemp(const String& estado, float valor) {
+    if (estado == "BOM") return "Temp ok";
+    if (valor == -127.0) return "Sensor erro";
+    if (valor < TEMP_BOM_MIN) {
+      if (valor < TEMP_CRITICO_MIN) return "Temp critica!";
+      return "Temp baixa";
+    }
+    if (valor > TEMP_BOM_MAX) {
+      if (valor > TEMP_CRITICO_MAX) return "Temp critica!";
+      return "Temp alta";
+    }
+    return "Monitorando";
+  }
 
-// ─── Função: recomendação de ação (temperatura) ──────────
-String recomendacaoTemp(const String& estado, float valor) {
-  if (estado == "BOM") return "Temp OK";
-  if (valor == -127.0) return "Sensor erro";
-  if (valor < TEMP_BOM_MIN) {
-    if (valor < TEMP_CRITICO_MIN) return "Risco de geada!";
-    return "Temp baixa";
-  }
-  if (valor > TEMP_BOM_MAX) {
-    if (valor > TEMP_CRITICO_MAX) return "Calor extremo!";
-    return "Temp alta";
-  }
-  return "Monitorando";
-}
 
 // ─── Função: atualiza LED RGB conforme pior estado ───────
 void atualizarLED(const String& estadoUmidade, const String& estadoTemp) {
@@ -212,8 +214,6 @@ void setup() {
   digitalWrite(PIN_GREEN,   LOW);
   digitalWrite(PIN_BLUE,    LOW);
   digitalWrite(PIN_VALVULA, LOW);
-
-  servo.attach(6);
 
   // Inicia biblioteca do DS18B20
   sensorTemp.begin();
