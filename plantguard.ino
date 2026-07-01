@@ -6,10 +6,10 @@
 
 // ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
 #include <LCD-I2C.h>
-/*#include <Wire.h>
+#include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-*/
+
 
 // ─── Configuração inicial ──────────────────────────────────────────────────
   // ─── LCD I2C ─────────────────────────────────────────────
@@ -21,8 +21,8 @@
   const int PIN_POT_TEMP    = A0;  // Potenciômetro que simula a leitura de temperatura
 
   // ─── DS18B20 ─────────────────────────────────────────────
-  /*OneWire oneWire(PIN_TEMPERATURA);
-  DallasTemperature sensorTemp(&oneWire);*/
+  OneWire oneWire(PIN_TEMPERATURA);
+  DallasTemperature sensorTemp(&oneWire);
 
   // ─── LED RGB ─────────────────────────────────────────────
   const int PIN_RED   = 8;
