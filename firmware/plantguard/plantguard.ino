@@ -1,103 +1,186 @@
-// ============================================================
-//   Monitor de Saúde da Horta
-//   Sensor: Higrômetro (umidade)
-// ============================================================
+// =================================================================================================================
+//                                           Monitor de Saúde da Horta
+//                              Sensores: Higrômetro (umidade), Potenciômetro (simula temperatura)
+// =================================================================================================================
 
-#include <Adafruit_LiquidCrystal.h>
-#include <Servo.h>
-#include <SoftwareSerial.h>
-  
-Adafruit_LiquidCrystal lcd_1(0);
 
-// ─── Pinos dos sensores ──────────────────────────────────
-const int PIN_UMIDADE = A1;
+// ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
+#include <LCD-I2C.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
-// ─── Pinos dos Bluetooth ──────────────────────────────────
-//(rxPin, txPin);
-SoftwareSerial Bluetooth(2, 3);
 
-// ─── LED RGB ─────────────────────────────────────────────
-const int PIN_RED = 8;
-const int PIN_GREEN = 9;
-const int PIN_BLUE = 10;
-const int VALVULA = 13;
+// ─── Configuração inicial ──────────────────────────────────────────────────
+  // ─── LCD I2C ─────────────────────────────────────────────
+  LCD_I2C lcd_1(0x27, 16, 2);
 
-// ─── Servo ───────────────────────────────────────────────
-Servo servo;
+  // ─── Pinos dos sensores ──────────────────────────────────
+  const int PIN_UMIDADE     = A1;
+  const int PIN_TEMPERATURA = 7;   // Pino digital do DS18B20 (uso futuro)
+  const int PIN_POT_TEMP    = A0;  // Potenciômetro que simula a leitura de temperatura
 
-const int UMID_CRITICO_MIN = 0;
-const int UMID_MEDIO_MIN = 400;
-const int UMID_BOM_MIN = 600;
-const int UMID_BOM_MAX = 820;
-const int UMID_MEDIO_MAX = 900;
-const int UMID_CRITICO_MAX = 1023;
+  // ─── DS18B20 ─────────────────────────────────────────────
+  OneWire oneWire(PIN_TEMPERATURA);
+  DallasTemperature sensorTemp(&oneWire);
 
-const int N_AMOSTRAS = 10;
-const unsigned long INTERVALO = 2000;
-unsigned long ultimaLeitura = 0;
-bool modoManual = false;
+  // ─── LED RGB ─────────────────────────────────────────────
+  const int PIN_RED   = 8;
+  const int PIN_GREEN = 9;
+  const int PIN_BLUE  = 10;
 
-// ─── Função: leitura com média ───────────────────────────
-int lerSensorMedia(int pino) {
-  long soma = 0;
-  for (int i = 0; i < N_AMOSTRAS; i++) {
-    soma += analogRead(pino);
-    delay(5);
+  // ─── Válvula solenoide ───────────────────────────────────
+  const int PIN_VALVULA = 13;
+
+  // ─── Faixas de umidade do solo para horta (ADC) ──────────
+  const int UMID_CRITICO_MIN = 0;    // MUITO ÚMIDO
+  const int UMID_MEDIO_MIN   = 200;
+  const int UMID_BOM_MIN     = 350;  // | FAIXA
+  const int UMID_BOM_MAX     = 650;  // | IDEAL
+  const int UMID_MEDIO_MAX   = 800;
+  const int UMID_CRITICO_MAX = 1023; // MUITO SECO
+
+  // ─── Faixas de temperatura para horta (°C) ───────────────
+  const float TEMP_CRITICO_MIN = 5.0;
+  const float TEMP_MEDIO_MIN   = 10.0;
+  const float TEMP_BOM_MIN     = 18.0;
+  const float TEMP_BOM_MAX     = 28.0;
+  const float TEMP_MEDIO_MAX   = 35.0;
+  const float TEMP_CRITICO_MAX = 40.0;
+
+  // ─── Faixa simulada de temperatura do potenciômetro ──────
+  const float TEMP_SIMULADA_MIN = -10.0; // Temperatura correspondente ao ADC 0
+  const float TEMP_SIMULADA_MAX = 50.0;  // Temperatura correspondente ao ADC 1023
+
+  const int N_AMOSTRAS = 10;
+  const unsigned long INTERVALO = 2000;
+  unsigned long ultimaLeitura   = 0;
+
+
+// ─── Leituras dos sensores com média ─────────────────────────────────────
+  // ─── Umidade  ─────────────────────────────────
+  int lerSensorMedia(int pino) {
+    long soma = 0;
+    for (int i = 0; i < N_AMOSTRAS; i++) {
+      soma += analogRead(pino);
+      delay(5);
+    }
+    return (int)(soma / N_AMOSTRAS);
   }
-  return (int)(soma / N_AMOSTRAS);
-}
 
-// ─── Função: avalia estado de saúde ─────────────────────
-String avaliarEstado(int valor,
-                     int criMin, int medMin, int bomMin,
-                     int bomMax, int medMax, int criMax) {
-  if (valor >= bomMin && valor <= bomMax) return "BOM";
-  if ((valor >= medMin && valor < bomMin) || (valor > bomMax && valor <= medMax)) return "MEDIO";
-  return "CRITICO";
-}
+  // ─── Temperatura (via Potenciômetro) ──────────────────────────
+  // Lê o potenciômetro, tira a média das amostras e converte o valor
+  // ADC (0-1023) para uma temperatura simulada em °C, já pronta para uso.
+  float lerTemperaturaMedia(int pino) {
+    long soma = 0;
+    int leituras = 0;
+    for (int i = 0; i < N_AMOSTRAS; i++) {
+      soma += analogRead(pino);
+      leituras++;
+      delay(10);
+    }
+    if (leituras == 0) return -127.0;  // Erro
 
-// ─── Função: recomendação de ação ────────────────────────
-String recomendacao(const String& sensor, const String& estado, int valor,
-                    int bomMin, int bomMax) {
-  if (estado == "BOM") return "Tudo bem";
+    int mediaADC = soma / leituras;
 
-  if (sensor == "UMIDADE") {
+    // Converte ADC (0-1023) -> °C (TEMP_SIMULADA_MIN a TEMP_SIMULADA_MAX)
+    // Usamos escala x10 no map() para manter 1 casa decimal de precisão,
+    // já que map() trabalha apenas com valores inteiros.
+    long tempX10 = map(mediaADC, 0, 1023,
+                        (long)(TEMP_SIMULADA_MIN * 10),
+                        (long)(TEMP_SIMULADA_MAX * 10));
+
+    return tempX10 / 10.0;
   }
 
-  return "Monitorando";
-}
+  // ─ Versão real com DS18B20 (uso futuro) ──────────
+  /*float lerTemperaturaMediaDS18B20() {
+    float soma = 0.0;
+    int leituras = 0;
+    for (int i = 0; i < N_AMOSTRAS; i++) {
+      sensorTemp.requestTemperatures();
+      float t = sensorTemp.getTempCByIndex(0);
+      if (t != DEVICE_DISCONNECTED_C) {
+        soma += t;
+        leituras++;
+      }
+      delay(10);
+    }
+    if (leituras == 0) return -127.0;  // Erro
+    return soma / leituras;
+  }*/
+
+// ─── Avaliação do estado de saúde ───────────────────────────────────────
+  // ─── Umidade (int ADC) ────────────────────────────────
+  String avaliarEstadoUmidade(int valor) {
+    if (valor >= UMID_BOM_MIN && valor <= UMID_BOM_MAX) return "BOM";
+    if ((valor >= UMID_MEDIO_MIN && valor < UMID_BOM_MIN) ||
+        (valor > UMID_BOM_MAX   && valor <= UMID_MEDIO_MAX)) return "MEDIO";
+    if (valor > UMID_CRITICO_MAX) return "CRITICO-MUITO-UMIDO";
+    return "CRITICO";
+  }
+
+  // ─── Temperatura (float °C) ───────────────────────────
+  String avaliarEstadoTemp(float valor) {
+    if (valor >= TEMP_BOM_MIN && valor <= TEMP_BOM_MAX) return "BOM";
+    if ((valor >= TEMP_MEDIO_MIN && valor < TEMP_BOM_MIN) ||
+        (valor > TEMP_BOM_MAX   && valor <= TEMP_MEDIO_MAX)) return "MEDIO";
+    return "CRITICO";
+  }
+
+
+// ─── Recomendação de ação ─────────────────────────────────────────────────────────
+  // ─── Umidade ─────────────────────────────────
+  String recomendacaoUmidade(const String& estado, int valor) {
+    if (estado == "BOM")    return "Umidade ok";
+    if (valor < UMID_BOM_MIN) return "Regar a horta";
+    if (valor > UMID_BOM_MAX) return "Solo encharcado";
+    return "Monitorando";
+  }
+
+  // ─── Temperatura ────────────────────────────
+  String recomendacaoTemp(const String& estado, float valor) {
+    if (estado == "BOM") return "Temp ok";
+    if (valor == -127.0) return "Sensor erro";
+    if (valor < TEMP_BOM_MIN) {
+      if (valor < TEMP_CRITICO_MIN) return "Temp critica!";
+      return "Temp baixa";
+    }
+    if (valor > TEMP_BOM_MAX) {
+      if (valor > TEMP_CRITICO_MAX) return "Temp critica!";
+      return "Temp alta";
+    }
+    return "Monitorando";
+  }
+
 
 // ─── Função: atualiza LED RGB conforme pior estado ───────
-// CRITICO → Vermelho  (R=HIGH, G=LOW,  B=LOW)
-// MEDIO   → Amarelo   (R=HIGH, G=HIGH, B=LOW)
-// BOM     → Verde     (R=LOW,  G=HIGH, B=LOW)
-void atualizarLED(const String& estadoUmidade) {
-
+void atualizarLED(const String& estadoUmidade, const String& estadoTemp) {
   String piorEstado = "BOM";
 
-  if (estadoUmidade == "CRITICO") {
+  if (estadoUmidade == "CRITICO" || estadoTemp == "CRITICO") {
     piorEstado = "CRITICO";
-  } else if (estadoUmidade == "MEDIO") {
+  } else if (estadoUmidade == "MEDIO" || estadoTemp == "MEDIO") {
     piorEstado = "MEDIO";
   }
 
   if (piorEstado == "CRITICO") {
-    digitalWrite(PIN_RED, HIGH);
+    digitalWrite(PIN_RED,   HIGH);
     digitalWrite(PIN_GREEN, LOW);
-    digitalWrite(PIN_BLUE, LOW);
+    digitalWrite(PIN_BLUE,  LOW);
   } else if (piorEstado == "MEDIO") {
-    digitalWrite(PIN_RED, HIGH);
+    digitalWrite(PIN_RED,   HIGH);
     digitalWrite(PIN_GREEN, HIGH);
-    digitalWrite(PIN_BLUE, LOW);
+    digitalWrite(PIN_BLUE,  LOW);
   } else {
-    digitalWrite(PIN_RED, LOW);
+    digitalWrite(PIN_RED,   LOW);
     digitalWrite(PIN_GREEN, HIGH);
-    digitalWrite(PIN_BLUE, LOW);
+    digitalWrite(PIN_BLUE,  LOW);
   }
 }
 
 // ─── Exibe ações no LCD (modo teste) ─────────────────────
-void exibeAcoes(String acaoUmidade) {
+void exibeAcoes(String acaoUmidade, String acaoTemp) {
   lcd_1.clear();
   lcd_1.setCursor(0, 0);
   lcd_1.print("TESTES:");
@@ -110,63 +193,76 @@ void exibeAcoes(String acaoUmidade) {
   delay(2000);
 
   lcd_1.clear();
+  lcd_1.print("ACAO TEMP:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print(acaoTemp);
+  delay(2000);
+
+  lcd_1.clear();
   lcd_1.print("VOLTANDO...");
   delay(500);
 }
 
-// ─── Valvula Solenoide ───────────────────────────────────
+// ─── Válvula Solenoide ────────────────────────────────────
 void valvula(const String& estadoUmidade) {
   if (estadoUmidade == "BOM") {
-    digitalWrite(VALVULA, LOW);
+    digitalWrite(PIN_VALVULA, LOW);
   } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
-    digitalWrite(VALVULA, HIGH);
+    digitalWrite(PIN_VALVULA, HIGH);
+  }if (estadoUmidade == "CRITICO-MUITO-UMIDO") {
+    digitalWrite(PIN_VALVULA, LOW);
   }
 }
 
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
+  Wire.begin();
+  lcd_1.begin(&Wire);
+  lcd_1.display();
+  lcd_1.backlight();
 
-  // ── Inicializacao do LCD ──────────────────────
-  lcd_1.begin(16, 2);
   lcd_1.setCursor(0, 0);
   lcd_1.print("PlantGuard");
   lcd_1.setCursor(0, 1);
-  lcd_1.print("Versao 1.0");
+  lcd_1.print("Versao 2.0");
   delay(1500);
   lcd_1.clear();
   lcd_1.setCursor(0, 0);
   lcd_1.print("Planta:");
   lcd_1.setCursor(0, 1);
-  lcd_1.print("Samambaia");
+  lcd_1.print("Horta");
   delay(1500);
   lcd_1.clear();
 
   Serial.begin(9600);
 
-  Bluetooth.begin(9600);
+  pinMode(PIN_RED,     OUTPUT);
+  pinMode(PIN_GREEN,   OUTPUT);
+  pinMode(PIN_BLUE,    OUTPUT);
+  pinMode(PIN_VALVULA, OUTPUT);
 
-  pinMode(PIN_RED, OUTPUT);
-  pinMode(PIN_GREEN, OUTPUT);
-  pinMode(PIN_BLUE, OUTPUT);
-  pinMode(VALVULA, OUTPUT);
+  digitalWrite(PIN_RED,     LOW);
+  digitalWrite(PIN_GREEN,   LOW);
+  digitalWrite(PIN_BLUE,    LOW);
+  digitalWrite(PIN_VALVULA, LOW);
 
-  digitalWrite(PIN_RED, LOW);
-  digitalWrite(PIN_GREEN, LOW);
-  digitalWrite(PIN_BLUE, LOW);
+  // Inicia biblioteca do DS18B20 (uso futuro)
+  //sensorTemp.begin();
 }
 
 // ─── Loop principal ──────────────────────────────────────
 void loop() {
 
-
   if (Serial.available() > 0) {
     char tecla = Serial.read();
     if (tecla == 't' || tecla == 'T') {
-      int adcUmidade = lerSensorMedia(PIN_UMIDADE);
+      int   adcUmidade = lerSensorMedia(PIN_UMIDADE);
+      float tempC      = lerTemperaturaMedia(PIN_POT_TEMP);
 
-      String aUmi = recomendacao("UMIDADE", avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX), adcUmidade, UMID_BOM_MIN, UMID_BOM_MAX);
+      String aUmi  = recomendacaoUmidade(avaliarEstadoUmidade(adcUmidade), adcUmidade);
+      String aTemp = recomendacaoTemp(avaliarEstadoTemp(tempC), tempC);
 
-      exibeAcoes(aUmi);
+      exibeAcoes(aUmi, aTemp);
       ultimaLeitura = millis();
       return;
     }
@@ -176,49 +272,47 @@ void loop() {
 
   if (agora - ultimaLeitura >= INTERVALO) {
 
-    int adcUmidade = lerSensorMedia(PIN_UMIDADE);
+    int   adcUmidade   = lerSensorMedia(PIN_UMIDADE);
+    float tempC        = lerTemperaturaMedia(PIN_POT_TEMP);
 
-    String estadoUmidade = avaliarEstado(adcUmidade, UMID_CRITICO_MIN, UMID_MEDIO_MIN, UMID_BOM_MIN, UMID_BOM_MAX, UMID_MEDIO_MAX, UMID_CRITICO_MAX);
+    String estadoUmidade = avaliarEstadoUmidade(adcUmidade);
+    String estadoTemp    = avaliarEstadoTemp(tempC);
 
-    // ── Atualiza LED conforme pior estado ──
-    atualizarLED(estadoUmidade);
+    atualizarLED(estadoUmidade, estadoTemp);
+    valvula(estadoUmidade);
 
-    // ── Aciona a valvula solenoide se necessario automaticamente ──
-    if (!modoManual) {
-      valvula(estadoUmidade);
-    }
-
-    // ─── Enviando estado para o aplicativo ──────────────────────────────────────
-    Bluetooth.print(adcUmidade);
-    Bluetooth.print(",");
-    Bluetooth.println(estadoUmidade);
-
-    // Umidade atualizada no LCD
+    // ── Página 1: Umidade ──
     lcd_1.clear();
     lcd_1.print("UMID: ");
     lcd_1.print(adcUmidade);
     lcd_1.setCursor(0, 1);
-    lcd_1.print("Status: ");
+    lcd_1.print("St: ");
     lcd_1.print(estadoUmidade);
+    delay(2000);
 
-    ultimaLeitura = agora;
-  }
-
-  // Recebendo comando de irrigação do aplicativo
-  if (Bluetooth.available()) {
-    int comandoApp = Bluetooth.read();
-
-    if (comandoApp == 1 || comandoApp == '1') {
-      modoManual = true;
-      digitalWrite(VALVULA, HIGH);
-    } 
-    else if (comandoApp == 0 || comandoApp == '0') {
-      modoManual = true;
-      digitalWrite(VALVULA, LOW);
+    // ── Página 2: Temperatura ──
+    lcd_1.clear();
+    lcd_1.print("TEMP: ");
+    if (tempC == -127.0) {
+      lcd_1.print("ERRO");
+    } else {
+      lcd_1.print(tempC, 1);
+      lcd_1.print(" C");
     }
-    else if (comandoApp == 'A' || comandoApp == 'a') {
-      //Volta para o modo Automático
-      modoManual = false;
-    }
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("St: ");
+    lcd_1.print(estadoTemp);
+    delay(2000);
+
+    Serial.print("Umidade ADC: ");
+    Serial.print(adcUmidade);
+    Serial.print(" | Status: ");
+    Serial.print(estadoUmidade);
+    Serial.print(" || Temp: ");
+    Serial.print(tempC, 1);
+    Serial.print(" C | Status: ");
+    Serial.println(estadoTemp);
+
+    ultimaLeitura = millis();
   }
 }
