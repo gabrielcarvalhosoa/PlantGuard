@@ -173,7 +173,7 @@ void exibeAcoes(String acaoUmidade, String acaoTemp) {
   delay(500);
 }
 
-// ─── Válvula Solenoide (baseada na umidade) ───────────────
+// ─── Válvula Solenoide ────────────────────────────────────
 void valvula(const String& estadoUmidade) {
   if (estadoUmidade == "BOM") {
     digitalWrite(PIN_VALVULA, LOW);
