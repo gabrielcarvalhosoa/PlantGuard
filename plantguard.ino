@@ -1,36 +1,37 @@
 // =================================================================================================================
 //                                           Monitor de Saúde da Horta
-//                              Sensores: Higrômetro (umidade), DS18B20 (temperatura)
+//                              Sensores: Higrômetro (umidade), Potenciômetro (simula temperatura)
 // =================================================================================================================
 
 
 // ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
 #include <LCD-I2C.h>
-#include <Wire.h>
+/*#include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-
+*/
 
 // ─── Configuração inicial ──────────────────────────────────────────────────
   // ─── LCD I2C ─────────────────────────────────────────────
   LCD_I2C lcd_1(0x27, 16, 2);
-  
+
   // ─── Pinos dos sensores ──────────────────────────────────
-  const int PIN_UMIDADE   = A1;
-  const int PIN_TEMPERATURA   = 7;
-  
+  const int PIN_UMIDADE     = A1;
+  const int PIN_TEMPERATURA = 7;   // Pino digital do DS18B20 (uso futuro)
+  const int PIN_POT_TEMP    = A0;  // Potenciômetro que simula a leitura de temperatura
+
   // ─── DS18B20 ─────────────────────────────────────────────
-  OneWire oneWire(PIN_TEMPERATURA);
-  DallasTemperature sensorTemp(&oneWire);
-  
+  /*OneWire oneWire(PIN_TEMPERATURA);
+  DallasTemperature sensorTemp(&oneWire);*/
+
   // ─── LED RGB ─────────────────────────────────────────────
   const int PIN_RED   = 8;
   const int PIN_GREEN = 9;
   const int PIN_BLUE  = 10;
-  
+
   // ─── Válvula solenoide ───────────────────────────────────
   const int PIN_VALVULA = 13;
-  
+
   // ─── Faixas de umidade do solo para horta (ADC) ──────────
   const int UMID_CRITICO_MIN = 0;    // MUITO ÚMIDO
   const int UMID_MEDIO_MIN   = 200;
@@ -38,7 +39,7 @@
   const int UMID_BOM_MAX     = 650;  // | IDEAL
   const int UMID_MEDIO_MAX   = 800;
   const int UMID_CRITICO_MAX = 1023; // MUITO SECO
-  
+
   // ─── Faixas de temperatura para horta (°C) ───────────────
   const float TEMP_CRITICO_MIN = 5.0;
   const float TEMP_MEDIO_MIN   = 10.0;
@@ -46,7 +47,11 @@
   const float TEMP_BOM_MAX     = 28.0;
   const float TEMP_MEDIO_MAX   = 35.0;
   const float TEMP_CRITICO_MAX = 40.0;
-  
+
+  // ─── Faixa simulada de temperatura do potenciômetro ──────
+  const float TEMP_SIMULADA_MIN = -10.0; // Temperatura correspondente ao ADC 0
+  const float TEMP_SIMULADA_MAX = 50.0;  // Temperatura correspondente ao ADC 1023
+
   const int N_AMOSTRAS = 10;
   const unsigned long INTERVALO = 2000;
   unsigned long ultimaLeitura   = 0;
@@ -62,10 +67,34 @@
     }
     return (int)(soma / N_AMOSTRAS);
   }
-  
-  // ─── Temperatura ──────────────────────────────
-  // ─ Retorna já em °C ──────────
-  float lerTemperaturaMedia() {
+
+  // ─── Temperatura (via Potenciômetro) ──────────────────────────
+  // Lê o potenciômetro, tira a média das amostras e converte o valor
+  // ADC (0-1023) para uma temperatura simulada em °C, já pronta para uso.
+  float lerTemperaturaMedia(int pino) {
+    long soma = 0;
+    int leituras = 0;
+    for (int i = 0; i < N_AMOSTRAS; i++) {
+      soma += analogRead(pino);
+      leituras++;
+      delay(10);
+    }
+    if (leituras == 0) return -127.0;  // Erro
+
+    int mediaADC = soma / leituras;
+
+    // Converte ADC (0-1023) -> °C (TEMP_SIMULADA_MIN a TEMP_SIMULADA_MAX)
+    // Usamos escala x10 no map() para manter 1 casa decimal de precisão,
+    // já que map() trabalha apenas com valores inteiros.
+    long tempX10 = map(mediaADC, 0, 1023,
+                        (long)(TEMP_SIMULADA_MIN * 10),
+                        (long)(TEMP_SIMULADA_MAX * 10));
+
+    return tempX10 / 10.0;
+  }
+
+  // ─ Versão real com DS18B20 (uso futuro) ──────────
+  /*float lerTemperaturaMediaDS18B20() {
     float soma = 0.0;
     int leituras = 0;
     for (int i = 0; i < N_AMOSTRAS; i++) {
@@ -79,7 +108,7 @@
     }
     if (leituras == 0) return -127.0;  // Erro
     return soma / leituras;
-  }
+  }*/
 
 // ─── Avaliação do estado de saúde ───────────────────────────────────────
   // ─── Umidade (int ADC) ────────────────────────────────
@@ -87,9 +116,10 @@
     if (valor >= UMID_BOM_MIN && valor <= UMID_BOM_MAX) return "BOM";
     if ((valor >= UMID_MEDIO_MIN && valor < UMID_BOM_MIN) ||
         (valor > UMID_BOM_MAX   && valor <= UMID_MEDIO_MAX)) return "MEDIO";
+    if (valor > UMID_CRITICO_MAX) return "CRITICO-MUITO-UMIDO";
     return "CRITICO";
   }
-  
+
   // ─── Temperatura (float °C) ───────────────────────────
   String avaliarEstadoTemp(float valor) {
     if (valor >= TEMP_BOM_MIN && valor <= TEMP_BOM_MAX) return "BOM";
@@ -107,7 +137,7 @@
     if (valor > UMID_BOM_MAX) return "Solo encharcado";
     return "Monitorando";
   }
-  
+
   // ─── Temperatura ────────────────────────────
   String recomendacaoTemp(const String& estado, float valor) {
     if (estado == "BOM") return "Temp ok";
@@ -179,6 +209,8 @@ void valvula(const String& estadoUmidade) {
     digitalWrite(PIN_VALVULA, LOW);
   } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
     digitalWrite(PIN_VALVULA, HIGH);
+  }if (estadoUmidade == "CRITICO-MUITO-UMIDO") {
+    digitalWrite(PIN_VALVULA, LOW);
   }
 }
 
@@ -214,8 +246,8 @@ void setup() {
   digitalWrite(PIN_BLUE,    LOW);
   digitalWrite(PIN_VALVULA, LOW);
 
-  // Inicia biblioteca do DS18B20
-  sensorTemp.begin();
+  // Inicia biblioteca do DS18B20 (uso futuro)
+  //sensorTemp.begin();
 }
 
 // ─── Loop principal ──────────────────────────────────────
@@ -225,7 +257,7 @@ void loop() {
     char tecla = Serial.read();
     if (tecla == 't' || tecla == 'T') {
       int   adcUmidade = lerSensorMedia(PIN_UMIDADE);
-      float tempC      = lerTemperaturaMedia();
+      float tempC      = lerTemperaturaMedia(PIN_POT_TEMP);
 
       String aUmi  = recomendacaoUmidade(avaliarEstadoUmidade(adcUmidade), adcUmidade);
       String aTemp = recomendacaoTemp(avaliarEstadoTemp(tempC), tempC);
@@ -241,7 +273,7 @@ void loop() {
   if (agora - ultimaLeitura >= INTERVALO) {
 
     int   adcUmidade   = lerSensorMedia(PIN_UMIDADE);
-    float tempC        = lerTemperaturaMedia();
+    float tempC        = lerTemperaturaMedia(PIN_POT_TEMP);
 
     String estadoUmidade = avaliarEstadoUmidade(adcUmidade);
     String estadoTemp    = avaliarEstadoTemp(tempC);
