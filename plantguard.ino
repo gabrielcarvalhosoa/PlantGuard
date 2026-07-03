@@ -103,7 +103,7 @@
   // ─── Umidade ─────────────────────────────────
   String recomendacaoUmidade(const String& estado, int valor) {
     if (estado == "BOM")    return "Umidade ok";
-    if (valor < UMID_BOM_MIN) return "Regar a horta";
+    if (valor < UMID_BOM_MIN) return "Solo seco";
     if (valor > UMID_BOM_MAX) return "Solo encharcado";
     return "Monitorando";
   }
@@ -173,11 +173,11 @@ void exibeAcoes(String acaoUmidade, String acaoTemp) {
   delay(500);
 }
 
-// ─── Válvula Solenoide ────────────────────────────────────
-void valvula(const String& estadoUmidade) {
+// ─── Válvula Solenoide (só abre quando o solo estiver seco) ──
+void valvula(const String& estadoUmidade, int valor) {
   if (estadoUmidade == "BOM") {
     digitalWrite(PIN_VALVULA, LOW);
-  } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
+  } else if ((estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") && (valor < UMID_BOM_MIN)) {
     digitalWrite(PIN_VALVULA, HIGH);
   }
 }
@@ -247,7 +247,7 @@ void loop() {
     String estadoTemp    = avaliarEstadoTemp(tempC);
 
     atualizarLED(estadoUmidade, estadoTemp);
-    valvula(estadoUmidade);
+    valvula(estadoUmidade, adcUmidade);
 
     // ── Página 1: Umidade ──
     lcd_1.clear();
