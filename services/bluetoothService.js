@@ -58,13 +58,21 @@ export const BluetoothService = {
 
         // Inscreve o callback que vai atualizar os estados lá na sua tela
         assinaturaLeitura = dispositivoConectado.onDataReceived((event) => {
-            const dadosRaw = event.data;
-            if (dadosRaw && dadosRaw.includes(',')) {
-                const [valorStr, statusStr] = dadosRaw.split(',');
-                // Retorna os dados limpos para quem chamou a função
+            cconst[tipoValor, estado] = dadosRaw.split(',');
+
+            if (tipoValor.startsWith('U:')) {
                 onDataReceivedCallback({
-                    umidade: valorStr.trim(),
-                    estado: statusStr.trim()
+                    tipo: 'umidade',
+                    umidade: tipoValor.replace('U:', ''),
+                    estadoUmidade: estado.trim()
+                });
+            }
+
+            if (tipoValor.startsWith('T:')) {
+                onDataReceivedCallback({
+                    tipo: 'temperatura',
+                    temperatura: tipoValor.replace('T:', ''),
+                    estadoTemperatura: estado.trim()
                 });
             }
         });
