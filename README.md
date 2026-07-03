@@ -20,7 +20,7 @@ O **PlantGuard** é um sistema automatizado baseado em Arduino para monitorament
 | :--- | :--- |
 | **Arduino** (Uno/Nano ou compatível) | Cérebro do sistema |
 | **Higrômetro de Solo (A1)** | Medição da umidade da terra |
-| **Display LCD 16x2 (LCD-I2c)** | Interface gráfica com o usuário |
+| **Display LCD 16x2 (LCD-I2C)** | Interface gráfica com o usuário |
 | **LED RGB** | Indicador visual de status (Bom/Médio/Crítico) |
 | **Válvula Solenoide / Relé (Pino 13)** | Atuador para liberação de água |
 
