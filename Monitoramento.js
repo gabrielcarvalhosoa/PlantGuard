@@ -8,7 +8,9 @@ export default function Monitoramento() {
 
     // Dados que vêm do Arduino
     const [umidade, setUmidade] = useState('--');
-    const [estado, setEstado] = useState('--');
+    const [estadoUmidade, setEstadoUmidade] = useState('--');
+    const [temperatura, setTemperatura] = useState('--');
+    const [estadoTemperatura, setEstadoTemperatura] = useState('--');
 
     // Modos de operação
     const [modoAutomatico, setModoAutomatico] = useState(true);
@@ -23,8 +25,21 @@ export default function Monitoramento() {
 
                 // Começa a escutar o Arduino e passa o que fazer com os dados
                 BluetoothService.escutarDados((dadosRecortados) => {
-                    setUmidade(dadosRecortados.umidade);
-                    setEstado(dadosRecortados.estado);
+                    switch (dadosRecortados.tipo) {
+
+                        case 'umidade':
+                            setUmidade(dadosRecortados.umidade);
+                            setEstadoUmidade(dadosRecortados.estadoUmidade);
+                            break;
+
+                        case 'temperatura':
+                            setTemperatura(dadosRecortados.temperatura);
+                            setEstadoTemperatura(dadosRecortados.estadoTemperatura);
+                            break;
+
+                        default:
+                            console.log("Tipo desconhecido:", dadosRecortados);
+                    }
                 });
 
             } catch (error) {
@@ -66,7 +81,9 @@ export default function Monitoramento() {
     return (
         <View style={styles.container}>
             <Text style={styles.titulo}>UMIDADE: {umidade}</Text>
-            <Text style={styles.titulo}>ESTADO: {estado}</Text>
+            <Text style={styles.titulo}>ESTADO UMIDADE: {estadoUmidade}</Text>
+            <Text style={styles.titulo}>TEMPERATURA: {temperatura}</Text>
+            <Text style={styles.titulo}>ESTADO TEMPERATURA: {estadoTemperatura}</Text>
             <Text style={styles.subtitulo}>MODO: {modoAutomatico ? "Automático" : "Manual"}</Text>
 
             <TouchableOpacity style={styles.botao} onPress={irrigacao}>
