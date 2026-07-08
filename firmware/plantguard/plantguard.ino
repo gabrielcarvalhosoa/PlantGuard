@@ -1,111 +1,404 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import { BluetoothService } from './services/bluetoothService';
-import { TouchableOpacity } from 'react-native';
+// =================================================================================================================
+//                                           Monitor de Saúde da Horta
+//                              Sensores: Higrômetro (umidade), Potenciômetro (simula temperatura)
+// =================================================================================================================
 
-export default function Monitoramento() {
+// ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
+#include <LCD-I2C.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <SoftwareSerial.h>
 
-    // Dados que vêm do Arduino
-    const [umidade, setUmidade] = useState('--');
-    const [estadoUmidade, setEstadoUmidade] = useState('--');
-    const [temperatura, setTemperatura] = useState('--');
-    const [estadoTemperatura, setEstadoTemperatura] = useState('--');
+// ─── Configuração inicial ──────────────────────────────────────────────────
+// ─── LCD I2C ─────────────────────────────────────────────
+LCD_I2C lcd_1(0x27, 16, 2);
 
-    // Modos de operação
-    const [modoAutomatico, setModoAutomatico] = useState(true);
-    const [irrigando, setIrrigando] = useState(false);
+// Pinos Bluetooth
+SoftwareSerial Bluetooth(2, 3);
 
+// ─── Pinos dos sensores ──────────────────────────────────
+const int PIN_UMIDADE = A1;
+const int PIN_TEMPERATURA = 7; // Pino digital do DS18B20 (uso futuro)
+const int PIN_POT_TEMP = A0;   // Potenciômetro que simula a leitura de temperatura
 
-    useEffect(() => {
-        const iniciarSistema = async () => {
-            try {
-                await BluetoothService.conectar();
-                Alert.alert("Sucesso", "Conectado ao Plant Guard!");
+// ─── DS18B20 ─────────────────────────────────────────────
+OneWire oneWire(PIN_TEMPERATURA);
+DallasTemperature sensorTemp(&oneWire);
 
-                // Começa a escutar o Arduino e passa o que fazer com os dados
-                BluetoothService.escutarDados((dadosRecortados) => {
-                    switch (dadosRecortados.tipo) {
+// ─── LED RGB ─────────────────────────────────────────────
+const int PIN_RED = 8;
+const int PIN_GREEN = 9;
+const int PIN_BLUE = 10;
 
-                        case 'umidade':
-                            setUmidade(dadosRecortados.umidade);
-                            setEstadoUmidade(dadosRecortados.estadoUmidade);
-                            break;
+// ─── Válvula solenoide ───────────────────────────────────
+const int PIN_VALVULA = 13;
 
-                        case 'temperatura':
-                            setTemperatura(dadosRecortados.temperatura);
-                            setEstadoTemperatura(dadosRecortados.estadoTemperatura);
-                            break;
+// ─── Faixas de umidade do solo para horta (ADC) ──────────
+const int UMID_CRITICO_MIN = 0; // MUITO ÚMIDO
+const int UMID_MEDIO_MIN = 200;
+const int UMID_BOM_MIN = 350; // | FAIXA
+const int UMID_BOM_MAX = 650; // | IDEAL
+const int UMID_MEDIO_MAX = 800;
+const int UMID_CRITICO_MAX = 1023; // MUITO SECO
 
-                        default:
-                            console.log("Tipo desconhecido:", dadosRecortados);
-                    }
-                });
+// ─── Faixas de temperatura para horta (°C) ───────────────
+const float TEMP_CRITICO_MIN = 5.0;
+const float TEMP_MEDIO_MIN = 10.0;
+const float TEMP_BOM_MIN = 18.0;
+const float TEMP_BOM_MAX = 28.0;
+const float TEMP_MEDIO_MAX = 35.0;
+const float TEMP_CRITICO_MAX = 40.0;
 
-            } catch (error) {
-                Alert.alert("Erro", "Não foi possível conectar ao dispositivo.");
-            }
-        };
+// ─── Faixa simulada de temperatura do potenciômetro ──────
+const float TEMP_SIMULADA_MIN = -10.0; // Temperatura correspondente ao ADC 0
+const float TEMP_SIMULADA_MAX = 50.0;  // Temperatura correspondente ao ADC 1023
 
-        return () => {
-            // Desliga a escuta desta tela específica
-            BluetoothService.pararEscuta();
-        };
-    }, []);
+const int N_AMOSTRAS = 10;
+const unsigned long INTERVALO = 2000;
+unsigned long ultimaLeitura = 0;
 
-    /* Ao irrigar ou desligar "manualmente" o modo automático é desativado
-    */
-    const irrigacao = () => {
-        if (!irrigando) {
-            setIrrigando(true);
-            setModoAutomatico(false);
-            BluetoothService.enviarComando('1');
-        } else {
-            setIrrigando(false);
-            setModoAutomatico(false);
-            BluetoothService.enviarComando('0');// Envia comando de desligar para o Arduino
-        }
-    };
+bool modoManual = false;
 
-    /*Se o modo automático está desligado, ligamos e enviamos isso para o 
-      Arduino com o caractere 'A'.
-    */
-    const ativarModoAutomatico = () => {
-        if (!modoAutomatico) {
-            setModoAutomatico(true);
-            setIrrigando(false); // Se voltou pro automático, limpa o estado manual de irrigação
-            BluetoothService.enviarComando('A');
-        }
-    };
-
-    return (
-        <View style={styles.container}>
-            <Text style={styles.titulo}>UMIDADE: {umidade}</Text>
-            <Text style={styles.titulo}>ESTADO UMIDADE: {estadoUmidade}</Text>
-            <Text style={styles.titulo}>TEMPERATURA: {temperatura}</Text>
-            <Text style={styles.titulo}>ESTADO TEMPERATURA: {estadoTemperatura}</Text>
-            <Text style={styles.subtitulo}>MODO: {modoAutomatico ? "Automático" : "Manual"}</Text>
-
-            <TouchableOpacity style={styles.botao} onPress={irrigacao}>
-                <Text style={styles.textoBotao}>
-                    {irrigando ? "PARAR IRRIGAÇÃO" : "IRRIGAR"}
-                </Text>
-            </TouchableOpacity>
-
-            {!modoAutomatico && (
-                <TouchableOpacity style={[styles.botao, styles.botaoAuto]} onPress={ativarModoAutomatico}>
-                    <Text style={styles.textoBotao}>VOLTAR PARA AUTOMÁTICO</Text>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
+// ─── Leituras dos sensores com média ─────────────────────────────────────
+// ─── Umidade  ─────────────────────────────────
+int lerSensorMedia(int pino)
+{
+  long soma = 0;
+  for (int i = 0; i < N_AMOSTRAS; i++)
+  {
+    soma += analogRead(pino);
+    delay(5);
+  }
+  return (int)(soma / N_AMOSTRAS);
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F5FCFF' },
-    titulo: { fontSize: 20, fontWeight: 'bold', marginVertical: 10 },
-    subtitulo: { fontSize: 16, color: '#666', marginBottom: 20 },
-    botao: { backgroundColor: '#007AFF', padding: 15, borderRadius: 8, marginVertical: 10, width: 250, alignItems: 'center' },
-    botaoAuto: { backgroundColor: '#4CD964' },
-    textoBotao: { color: 'white', fontWeight: 'bold' }
-});
+// ─── Temperatura (via Potenciômetro) ──────────────────────────
+// Lê o potenciômetro, tira a média das amostras e converte o valor
+// ADC (0-1023) para uma temperatura simulada em °C, já pronta para uso.
+float lerTemperaturaMedia(int pino)
+{
+  long soma = 0;
+  int leituras = 0;
+  for (int i = 0; i < N_AMOSTRAS; i++)
+  {
+    soma += analogRead(pino);
+    leituras++;
+    delay(10);
+  }
+  if (leituras == 0)
+    return -127.0; // Erro
+
+  int mediaADC = soma / leituras;
+
+  // Converte ADC (0-1023) -> °C (TEMP_SIMULADA_MIN a TEMP_SIMULADA_MAX)
+  // Usamos escala x10 no map() para manter 1 casa decimal de precisão,
+  // já que map() trabalha apenas com valores inteiros.
+  long tempX10 = map(mediaADC, 0, 1023,
+                     (long)(TEMP_SIMULADA_MIN * 10),
+                     (long)(TEMP_SIMULADA_MAX * 10));
+
+  return tempX10 / 10.0;
+}
+
+// ─ Versão real com DS18B20 (uso futuro) ──────────
+/*float lerTemperaturaMediaDS18B20() {
+  float soma = 0.0;
+  int leituras = 0;
+  for (int i = 0; i < N_AMOSTRAS; i++) {
+    sensorTemp.requestTemperatures();
+    float t = sensorTemp.getTempCByIndex(0);
+    if (t != DEVICE_DISCONNECTED_C) {
+      soma += t;
+      leituras++;
+    }
+    delay(10);
+  }
+  if (leituras == 0) return -127.0;  // Erro
+  return soma / leituras;
+}*/
+
+// ─── Avaliação do estado de saúde ───────────────────────────────────────
+// ─── Umidade (int ADC) ────────────────────────────────
+String avaliarEstadoUmidade(int valor)
+{
+  if (valor >= UMID_BOM_MIN && valor <= UMID_BOM_MAX)
+    return "BOM";
+  if ((valor >= UMID_MEDIO_MIN && valor < UMID_BOM_MIN) ||
+      (valor > UMID_BOM_MAX && valor <= UMID_MEDIO_MAX))
+    return "MEDIO";
+  if (valor > UMID_CRITICO_MAX)
+    return "CRITICO-MUITO-UMIDO";
+  return "CRITICO";
+}
+
+// ─── Temperatura (float °C) ───────────────────────────
+String avaliarEstadoTemp(float valor)
+{
+  if (valor >= TEMP_BOM_MIN && valor <= TEMP_BOM_MAX)
+    return "BOM";
+  if ((valor >= TEMP_MEDIO_MIN && valor < TEMP_BOM_MIN) ||
+      (valor > TEMP_BOM_MAX && valor <= TEMP_MEDIO_MAX))
+    return "MEDIO";
+  return "CRITICO";
+}
+
+// ─── Recomendação de ação ─────────────────────────────────────────────────────────
+// ─── Umidade ─────────────────────────────────
+String recomendacaoUmidade(const String &estado, int valor)
+{
+  if (estado == "BOM")
+    return "Umidade ok";
+  if (valor < UMID_BOM_MIN)
+    return "Regar a horta";
+  if (valor > UMID_BOM_MAX)
+    return "Solo encharcado";
+  return "Monitorando";
+}
+
+// ─── Temperatura ────────────────────────────
+String recomendacaoTemp(const String &estado, float valor)
+{
+  if (estado == "BOM")
+    return "Temp ok";
+  if (valor == -127.0)
+    return "Sensor erro";
+  if (valor < TEMP_BOM_MIN)
+  {
+    if (valor < TEMP_CRITICO_MIN)
+      return "Temp critica!";
+    return "Temp baixa";
+  }
+  if (valor > TEMP_BOM_MAX)
+  {
+    if (valor > TEMP_CRITICO_MAX)
+      return "Temp critica!";
+    return "Temp alta";
+  }
+  return "Monitorando";
+}
+
+// ─── Função: atualiza LED RGB conforme pior estado ───────
+void atualizarLED(const String &estadoUmidade, const String &estadoTemp)
+{
+  String piorEstado = "BOM";
+
+  if (estadoUmidade == "CRITICO" || estadoTemp == "CRITICO")
+  {
+    piorEstado = "CRITICO";
+  }
+  else if (estadoUmidade == "MEDIO" || estadoTemp == "MEDIO")
+  {
+    piorEstado = "MEDIO";
+  }
+
+  if (piorEstado == "CRITICO")
+  {
+    digitalWrite(PIN_RED, HIGH);
+    digitalWrite(PIN_GREEN, LOW);
+    digitalWrite(PIN_BLUE, LOW);
+  }
+  else if (piorEstado == "MEDIO")
+  {
+    digitalWrite(PIN_RED, HIGH);
+    digitalWrite(PIN_GREEN, HIGH);
+    digitalWrite(PIN_BLUE, LOW);
+  }
+  else
+  {
+    digitalWrite(PIN_RED, LOW);
+    digitalWrite(PIN_GREEN, HIGH);
+    digitalWrite(PIN_BLUE, LOW);
+  }
+}
+
+// ─── Exibe ações no LCD (modo teste) ─────────────────────
+void exibeAcoes(String acaoUmidade, String acaoTemp)
+{
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("TESTES:");
+  delay(1000);
+
+  lcd_1.clear();
+  lcd_1.print("ACAO UMIDADE:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print(acaoUmidade);
+  delay(2000);
+
+  lcd_1.clear();
+  lcd_1.print("ACAO TEMP:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print(acaoTemp);
+  delay(2000);
+
+  lcd_1.clear();
+  lcd_1.print("VOLTANDO...");
+  delay(500);
+}
+
+// ─── Válvula Solenoide ────────────────────────────────────
+void valvula(const String &estadoUmidade)
+{
+  if (estadoUmidade == "BOM")
+  {
+    digitalWrite(PIN_VALVULA, LOW);
+  }
+  else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO")
+  {
+    digitalWrite(PIN_VALVULA, HIGH);
+  }
+  if (estadoUmidade == "CRITICO-MUITO-UMIDO")
+  {
+    digitalWrite(PIN_VALVULA, LOW);
+  }
+}
+
+// ─── Setup ───────────────────────────────────────────────
+void setup()
+{
+  Wire.begin();
+  lcd_1.begin(&Wire);
+  lcd_1.display();
+  lcd_1.backlight();
+
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("PlantGuard");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("Versao 2.0");
+  delay(1500);
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("Planta:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("Horta");
+  delay(1500);
+  lcd_1.clear();
+
+  Serial.begin(9600);
+
+  Bluetooth.begin(9600);
+
+  pinMode(PIN_RED, OUTPUT);
+  pinMode(PIN_GREEN, OUTPUT);
+  pinMode(PIN_BLUE, OUTPUT);
+  pinMode(PIN_VALVULA, OUTPUT);
+
+  digitalWrite(PIN_RED, LOW);
+  digitalWrite(PIN_GREEN, LOW);
+  digitalWrite(PIN_BLUE, LOW);
+  digitalWrite(PIN_VALVULA, LOW);
+
+  // Inicia biblioteca do DS18B20 (uso futuro)
+  // sensorTemp.begin();
+}
+
+// ─── Loop principal ──────────────────────────────────────
+void loop()
+{
+
+  if (Serial.available() > 0)
+  {
+    char tecla = Serial.read();
+    if (tecla == 't' || tecla == 'T')
+    {
+      int adcUmidade = lerSensorMedia(PIN_UMIDADE);
+      float tempC = lerTemperaturaMedia(PIN_POT_TEMP);
+
+      String aUmi = recomendacaoUmidade(avaliarEstadoUmidade(adcUmidade), adcUmidade);
+      String aTemp = recomendacaoTemp(avaliarEstadoTemp(tempC), tempC);
+
+      exibeAcoes(aUmi, aTemp);
+      ultimaLeitura = millis();
+      return;
+    }
+  }
+
+  unsigned long agora = millis();
+
+  if (agora - ultimaLeitura >= INTERVALO)
+  {
+
+    int adcUmidade = lerSensorMedia(PIN_UMIDADE);
+    float tempC = lerTemperaturaMedia(PIN_POT_TEMP);
+
+    String estadoUmidade = avaliarEstadoUmidade(adcUmidade);
+    String estadoTemp = avaliarEstadoTemp(tempC);
+
+    atualizarLED(estadoUmidade, estadoTemp);
+    if (!modoManual)
+    {
+      valvula(estadoUmidade);
+    }
+
+    // ─── Enviando estado para o aplicativo ──────────────────────────────────────
+    Bluetooth.print("U:");
+    Bluetooth.print(adcUmidade);
+    Bluetooth.print(",");
+    Bluetooth.println(estadoUmidade);
+
+    Bluetooth.print("T:");
+    Bluetooth.print(tempC);
+    Bluetooth.print(",");
+    Bluetooth.println(estadoTemp);
+
+    // ── Página 1: Umidade ──
+    lcd_1.clear();
+    lcd_1.print("UMID: ");
+    lcd_1.print(adcUmidade);
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("St: ");
+    lcd_1.print(estadoUmidade);
+    delay(2000);
+
+    // ── Página 2: Temperatura ──
+    lcd_1.clear();
+    lcd_1.print("TEMP: ");
+    if (tempC == -127.0)
+    {
+      lcd_1.print("ERRO");
+    }
+    else
+    {
+      lcd_1.print(tempC, 1);
+      lcd_1.print(" C");
+    }
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("St: ");
+    lcd_1.print(estadoTemp);
+    delay(2000);
+
+    Serial.print("Umidade ADC: ");
+    Serial.print(adcUmidade);
+    Serial.print(" | Status: ");
+    Serial.print(estadoUmidade);
+    Serial.print(" || Temp: ");
+    Serial.print(tempC, 1);
+    Serial.print(" C | Status: ");
+    Serial.println(estadoTemp);
+
+    ultimaLeitura = millis();
+  }
+
+  // Recebendo comando de irrigação do aplicativo
+  if (Bluetooth.available())
+  {
+    int comandoApp = Bluetooth.read();
+
+    if (comandoApp == 1 || comandoApp == '1')
+    {
+      modoManual = true;
+      digitalWrite(PIN_VALVULA, HIGH);
+    }
+    else if (comandoApp == 0 || comandoApp == '0')
+    {
+      modoManual = true;
+      digitalWrite(PIN_VALVULA, LOW);
+    }
+    else if (comandoApp == 'A' || comandoApp == 'a')
+    {
+      // Volta para o modo Automático
+      modoManual = false;
+    }
+  }
+}
