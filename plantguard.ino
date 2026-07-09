@@ -1,6 +1,7 @@
 // =================================================================================================================
 //                                           Monitor de Saúde da Horta
 //                              Sensores: Higrômetro (umidade), DS18B20 (temperatura)
+//                     Saídas: LED RGB, Tela LCD I2C, App PlantGuard (Bluetooth), Válvula Solenoide
 // =================================================================================================================
 
 
@@ -9,12 +10,16 @@
 #include <Wire.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <SoftwareSerial.h>
 
 
 // ─── Configuração inicial ──────────────────────────────────────────────────
   // ─── LCD I2C ─────────────────────────────────────────────
   LCD_I2C lcd_1(0x27, 16, 2);
-  
+
+  // Pinos Bluetooth
+  SoftwareSerial Bluetooth(2, 3);
+
   // ─── Pinos dos sensores ──────────────────────────────────
   const int PIN_UMIDADE   = A1;
   const int PIN_TEMPERATURA   = 7;
@@ -50,6 +55,8 @@
   const int N_AMOSTRAS = 10;
   const unsigned long INTERVALO = 2000;
   unsigned long ultimaLeitura   = 0;
+
+  bool modoManual = false;
 
 
 // ─── Leituras dos sensores com média ─────────────────────────────────────
@@ -149,7 +156,7 @@ void atualizarLED(const String& estadoUmidade, const String& estadoTemp) {
   }
 }
 
-// ─── Exibe ações no LCD (modo teste) ─────────────────────
+// ─── Exibe ações no LCD (debug) ─────────────────────────
 void exibeAcoes(String acaoUmidade, String acaoTemp) {
   lcd_1.clear();
   lcd_1.setCursor(0, 0);
@@ -204,6 +211,8 @@ void setup() {
 
   Serial.begin(9600);
 
+  Bluetooth.begin(9600);
+
   pinMode(PIN_RED,     OUTPUT);
   pinMode(PIN_GREEN,   OUTPUT);
   pinMode(PIN_BLUE,    OUTPUT);
@@ -213,8 +222,7 @@ void setup() {
   digitalWrite(PIN_GREEN,   LOW);
   digitalWrite(PIN_BLUE,    LOW);
   digitalWrite(PIN_VALVULA, LOW);
-
-  // Inicia biblioteca do DS18B20
+  
   sensorTemp.begin();
 }
 
@@ -247,40 +255,71 @@ void loop() {
     String estadoTemp    = avaliarEstadoTemp(tempC);
 
     atualizarLED(estadoUmidade, estadoTemp);
-    valvula(estadoUmidade, adcUmidade);
-
-    // ── Página 1: Umidade ──
-    lcd_1.clear();
-    lcd_1.print("UMID: ");
-    lcd_1.print(adcUmidade);
-    lcd_1.setCursor(0, 1);
-    lcd_1.print("St: ");
-    lcd_1.print(estadoUmidade);
-    delay(2000);
-
-    // ── Página 2: Temperatura ──
-    lcd_1.clear();
-    lcd_1.print("TEMP: ");
-    if (tempC == -127.0) {
-      lcd_1.print("ERRO");
-    } else {
-      lcd_1.print(tempC, 1);
-      lcd_1.print(" C");
+    if (!modoManual) {
+      valvula(estadoUmidade, adcUmidade);
     }
-    lcd_1.setCursor(0, 1);
-    lcd_1.print("St: ");
-    lcd_1.print(estadoTemp);
-    delay(2000);
 
-    Serial.print("Umidade ADC: ");
-    Serial.print(adcUmidade);
-    Serial.print(" | Status: ");
-    Serial.print(estadoUmidade);
-    Serial.print(" || Temp: ");
-    Serial.print(tempC, 1);
-    Serial.print(" C | Status: ");
-    Serial.println(estadoTemp);
+    // ─── App ───────────────────────────────
+      Bluetooth.print("U:");
+      Bluetooth.print(adcUmidade);
+      Bluetooth.print(",");
+      Bluetooth.println(estadoUmidade);
+  
+      Bluetooth.print("T:");
+      Bluetooth.print(tempC);
+      Bluetooth.print(",");
+      Bluetooth.println(estadoTemp);
+
+    // ─── LCD ───────────────────────────
+      // ── Página 1: Umidade ──
+      lcd_1.clear();
+      lcd_1.print("UMID: ");
+      lcd_1.print(adcUmidade);
+      lcd_1.setCursor(0, 1);
+      lcd_1.print("St: ");
+      lcd_1.print(estadoUmidade);
+      delay(2000);
+  
+      // ── Página 2: Temperatura ──
+      lcd_1.clear();
+      lcd_1.print("TEMP: ");
+      if (tempC == -127.0) {
+        lcd_1.print("ERRO");
+      } else {
+        lcd_1.print(tempC, 1);
+        lcd_1.print(" C");
+      }
+      lcd_1.setCursor(0, 1);
+      lcd_1.print("St: ");
+      lcd_1.print(estadoTemp);
+      delay(2000);
+
+    // ─── Serial ─────────────────────
+      Serial.print("Umidade ADC: ");
+      Serial.print(adcUmidade);
+      Serial.print(" | Status: ");
+      Serial.print(estadoUmidade);
+      Serial.print(" || Temp: ");
+      Serial.print(tempC, 1);
+      Serial.print(" C | Status: ");
+      Serial.println(estadoTemp);
 
     ultimaLeitura = millis();
+  }
+
+  // ─── Comando de irrigação pelo app ──────────────
+  if (Bluetooth.available()) {
+    int comandoApp = Bluetooth.read();
+
+    if (comandoApp == 1 || comandoApp == '1') {
+      modoManual = true;
+      digitalWrite(PIN_VALVULA, HIGH);
+    } else if (comandoApp == 0 || comandoApp == '0') {
+      modoManual = true;
+      digitalWrite(PIN_VALVULA, LOW);
+    } else if (comandoApp == 'A' || comandoApp == 'a') {
+      // Volta para o modo Automático
+      modoManual = false;
+    }
   }
 }
