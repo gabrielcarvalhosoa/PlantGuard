@@ -4,6 +4,9 @@
 // =================================================================================================================
 
 // ─── Configuração inicial 
+#include <Wire.h>
+
+LCD_I2C lcd_1(0x27, 16, 2);
 
 // ─── Pinos dos sensores ──────────────────────────────────
 const int PIN_UMIDADE     = A1;
@@ -152,19 +155,57 @@ void exibeAcoes(String acaoUmidade, String acaoTemp) {
 
   Serial.print("ACAO TEMP: ");
   Serial.println(acaoTemp);
+
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("TESTES:");
+  delay(1000);
+
+  lcd_1.clear();
+  lcd_1.print("ACAO UMIDADE:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print(acaoUmidade);
+  delay(2000);
+
+  lcd_1.clear();
+  lcd_1.print("ACAO TEMP:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print(acaoTemp);
+  delay(2000);
+
+  lcd_1.clear();
+  lcd_1.print("VOLTANDO...");
+  delay(500);
 }
 
 // ─── Válvula Solenoide (só abre quando o solo estiver seco) ──
-void valvula(const String& estadoUmidade, int valor) {
+void valvula(const String& estadoUmidade, float valor) {
   if ((estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") && (valor < UMID_BOM_MIN)) {
     digitalWrite(PIN_VALVULA, HIGH);
   } else {
     digitalWrite(PIN_VALVULA, LOW);
   }
 }
-
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
+
+  Wire.begin();
+  lcd_1.begin(&Wire);
+  lcd_1.display();
+  lcd_1.backlight();
+
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("PlantGuard");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("Versao 2.0");
+  delay(1500);
+  lcd_1.clear();
+  lcd_1.setCursor(0, 0);
+  lcd_1.print("Planta:");
+  lcd_1.setCursor(0, 1);
+  lcd_1.print("Horta");
+  delay(1500);
+  lcd_1.clear();
 
   Serial.begin(9600);
 
@@ -214,6 +255,29 @@ void loop() {
 
     atualizarLED(estadoUmidade, estadoTemp);
     valvula(estadoUmidade, umidadePorcentagem);
+
+     // ── Página 1: Umidade ──
+    lcd_1.clear();
+    lcd_1.print("UMID: ");
+    lcd_1.print(umidadePorcentagem);
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("St: ");
+    lcd_1.print(estadoUmidade);
+    delay(2000);
+    
+    // ── Página 2: Temperatura ──
+    lcd_1.clear();
+    lcd_1.print("TEMP: ");
+    if (tempC == -127.0) {
+      lcd_1.print("ERRO");
+    } else {
+      lcd_1.print(tempC, 1);
+      lcd_1.print(" C");
+    }
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("St: ");
+    lcd_1.print(estadoTemp);
+    delay(2000);
 
     Serial.print("UMID: ");
     Serial.print(umidadePorcentagem, 1); // Exibe com 1 casa decimal
