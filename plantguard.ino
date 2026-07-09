@@ -1,26 +1,13 @@
 // =================================================================================================================
 //                                         Monitor de Saúde da Horta
-//                               Sensores: Higrômetro (umidade), Potenciômetro (simula temperatura)
+//                               Sensores: Higrômetro (umidade simulada por potenciômetro), Potenciômetro (simula temperatura)
 // =================================================================================================================
 
-// ─── Bibliotecas Utilizadas ────────────────────────────────────────────────
-#include <LCD-I2C.h>
-#include <Wire.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-
-// ─── Configuração inicial ──────────────────────────────────────────────────
-// ─── LCD I2C ─────────────────────────────────────────────
-LCD_I2C lcd_1(0x27, 16, 2);
+// ─── Configuração inicial 
 
 // ─── Pinos dos sensores ──────────────────────────────────
 const int PIN_UMIDADE     = A1;
-const int PIN_TEMPERATURA = 7;   // Pino digital do DS18B20 (uso futuro)
-const int PIN_POT_TEMP    = A0;  // Potenciômetro que simula a leitura de temperatura
-
-// ─── DS18B20 ─────────────────────────────────────────────
-OneWire oneWire(PIN_TEMPERATURA);
-DallasTemperature sensorTemp(&oneWire);
+const int PIN_TEMPERATURA = A0;   // Pino digital do DS18B20 (uso futuro)
 
 // ─── LED RGB ─────────────────────────────────────────────
 const int PIN_RED   = 8;
@@ -96,13 +83,12 @@ float lerTemperaturaMedia(int pino) {
 }
 
 // ─── Avaliação do estado de saúde ───────────────────────────────────────
-String avaliarEstadoUmidade(float valor) {
-  if (valor >= UMID_BOM_MIN && valor <= UMID_BOM_MAX) return "BOM";
-  if ((valor >= UMID_MEDIO_MIN && valor < UMID_BOM_MIN) ||
-      (valor > UMID_BOM_MAX   && valor <= UMID_MEDIO_MAX)) return "MEDIO";
-  if (valor > UMID_MEDIO_MAX) return "CRITICO-MUITO-UMIDO"; // Se passou do máximo médio, está encharcado
-  return "CRITICO"; // Se for menor que o mínimo médio, está seco
-}
+ String avaliarEstadoUmidade(float valor) {
+    if (valor >= UMID_BOM_MIN && valor <= UMID_BOM_MAX) return "BOM";
+    if ((valor >= UMID_MEDIO_MIN && valor < UMID_BOM_MIN) ||
+        (valor > UMID_BOM_MAX   && valor <= UMID_MEDIO_MAX)) return "MEDIO";
+    return "CRITICO";
+  }
 
 String avaliarEstadoTemp(float valor) {
   if (valor >= TEMP_BOM_MIN && valor <= TEMP_BOM_MAX) return "BOM";
@@ -120,15 +106,15 @@ String recomendacaoUmidade(const String& estado, float valor) {
 }
 
 String recomendacaoTemp(const String& estado, float valor) {
-  if (estado == "BOM") return "Temp ok";
+  if (estado == "BOM") return "Temperatura ok";
   if (valor == -127.0) return "Sensor erro";
   if (valor < TEMP_BOM_MIN) {
-    if (valor < TEMP_CRITICO_MIN) return "Temp critica!";
+    if (valor < TEMP_CRITICO_MIN) return "Temperatura critica!";
     return "Temp baixa";
   }
   if (valor > TEMP_BOM_MAX) {
-    if (valor > TEMP_CRITICO_MAX) return "Temp critica!";
-    return "Temp alta";
+    if (valor > TEMP_CRITICO_MAX) return "Temperatura critica!";
+    return "Temperatura alta";
   }
   return "Monitorando";
 }
@@ -137,7 +123,7 @@ String recomendacaoTemp(const String& estado, float valor) {
 void atualizarLED(const String& estadoUmidade, const String& estadoTemp) {
   String piorEstado = "BOM";
 
-  if (estadoUmidade == "CRITICO" || estadoUmidade == "CRITICO-MUITO-UMIDO" || estadoTemp == "CRITICO") {
+  if (estadoUmidade == "CRITICO" || estadoTemp == "CRITICO") {
     piorEstado = "CRITICO";
   } else if (estadoUmidade == "MEDIO" || estadoTemp == "MEDIO") {
     piorEstado = "MEDIO";
@@ -158,62 +144,34 @@ void atualizarLED(const String& estadoUmidade, const String& estadoTemp) {
   }
 }
 
-// ─── Exibe ações no LCD (modo teste) ─────────────────────
+// ─── Exibe ações no Monitor Serial (modo teste) ─────────────────────
 void exibeAcoes(String acaoUmidade, String acaoTemp) {
-  lcd_1.clear();
-  lcd_1.setCursor(0, 0);
-  lcd_1.print("TESTES:");
-  delay(1000);
+  Serial.println("TESTES:");
+  Serial.print("ACAO UMIDADE: ");
+  Serial.println(acaoUmidade);
 
-  lcd_1.clear();
-  lcd_1.print("ACAO UMIDADE:");
-  lcd_1.setCursor(0, 1);
-  lcd_1.print(acaoUmidade);
-  delay(2000);
-
-  lcd_1.clear();
-  lcd_1.print("ACAO TEMP:");
-  lcd_1.setCursor(0, 1);
-  lcd_1.print(acaoTemp);
-  delay(2000);
-
-  lcd_1.clear();
-  lcd_1.print("VOLTANDO...");
-  delay(500);
+  Serial.print("ACAO TEMP: ");
+  Serial.println(acaoTemp);
 }
 
-// ─── Válvula Solenoide ────────────────────────────────────
-void valvula(const String& estadoUmidade) {
-  if (estadoUmidade == "BOM") {
+// ─── Válvula Solenoide (só abre quando o solo estiver seco) ──
+void valvula(const String& estadoUmidade, int valor) {
+  if ((estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") && (valor < UMID_BOM_MIN)) {
+    digitalWrite(PIN_VALVULA, HIGH);
+  } else {
     digitalWrite(PIN_VALVULA, LOW);
-  } else if (estadoUmidade == "CRITICO" || estadoUmidade == "MEDIO") {
-    digitalWrite(PIN_VALVULA, HIGH); // Liga para regar se estiver seco/médio
-  } else if (estadoUmidade == "CRITICO-MUITO-UMIDO") {
-    digitalWrite(PIN_VALVULA, LOW);  // Desliga se já estiver encharcado
   }
 }
 
 // ─── Setup ───────────────────────────────────────────────
 void setup() {
-  Wire.begin();
-  lcd_1.begin(&Wire);
-  lcd_1.display();
-  lcd_1.backlight();
-
-  lcd_1.setCursor(0, 0);
-  lcd_1.print("PlantGuard");
-  lcd_1.setCursor(0, 1);
-  lcd_1.print("Versao 2.0");
-  delay(1500);
-  lcd_1.clear();
-  lcd_1.setCursor(0, 0);
-  lcd_1.print("Planta:");
-  lcd_1.setCursor(0, 1);
-  lcd_1.print("Horta");
-  delay(1500);
-  lcd_1.clear();
 
   Serial.begin(9600);
+
+  Serial.println("PlantGuard");
+  Serial.println("Versao 2.0");
+  Serial.print("Planta: ");
+  Serial.println("Horta");
 
   pinMode(PIN_RED,     OUTPUT);
   pinMode(PIN_GREEN,   OUTPUT);
@@ -232,9 +190,8 @@ void loop() {
   if (Serial.available() > 0) {
     char tecla = Serial.read();
     if (tecla == 't' || tecla == 'T') {
-      // CORRIGIDO: Nome da função de umidade alterado
       float umidadePorcentagem = lerUmidadeMedia(PIN_UMIDADE);
-      float tempC             = lerTemperaturaMedia(PIN_POT_TEMP);
+      float tempC = lerTemperaturaMedia(PIN_TEMPERATURA);
 
       String aUmi  = recomendacaoUmidade(avaliarEstadoUmidade(umidadePorcentagem), umidadePorcentagem);
       String aTemp = recomendacaoTemp(avaliarEstadoTemp(tempC), tempC);
@@ -249,46 +206,26 @@ void loop() {
 
   if (agora - ultimaLeitura >= INTERVALO) {
 
-    // CORRIGIDO: Nome da função alterado e tipo alterado para float
     float umidadePorcentagem = lerUmidadeMedia(PIN_UMIDADE);
-    float tempC             = lerTemperaturaMedia(PIN_POT_TEMP);
+    float tempC             = lerTemperaturaMedia(PIN_TEMPERATURA);
 
     String estadoUmidade = avaliarEstadoUmidade(umidadePorcentagem);
     String estadoTemp    = avaliarEstadoTemp(tempC);
 
     atualizarLED(estadoUmidade, estadoTemp);
-    valvula(estadoUmidade);
+    valvula(estadoUmidade, umidadePorcentagem);
 
-    // ── Página 1: Umidade ──
-    lcd_1.clear();
-    lcd_1.print("UMID: ");
-    lcd_1.print(umidadePorcentagem, 1); // Exibe com 1 casa decimal
-    lcd_1.print("%");
-    lcd_1.setCursor(0, 1);
-    lcd_1.print("St: ");
-    lcd_1.print(estadoUmidade);
-    delay(2000);
-
-    // ── Página 2: Temperatura ──
-    lcd_1.clear();
-    lcd_1.print("TEMP: ");
-    if (tempC == -127.0) {
-      lcd_1.print("ERRO");
-    } else {
-      lcd_1.print(tempC, 1);
-      lcd_1.print(" C");
-    }
-    lcd_1.setCursor(0, 1);
-    lcd_1.print("St: ");
-    lcd_1.print(estadoTemp);
-    delay(2000);
-
-    Serial.print("Umidade: ");
-    Serial.print(umidadePorcentagem, 1);
+    Serial.print("UMID: ");
+    Serial.print(umidadePorcentagem, 1); // Exibe com 1 casa decimal
     Serial.print("% | Status: ");
-    Serial.print(estadoUmidade);
-    Serial.print(" || Temp: ");
-    Serial.print(tempC, 1);
+    Serial.println(estadoUmidade);
+
+    Serial.print("TEMP: ");
+    if (tempC == -127.0) {
+      Serial.println("ERRO");
+    } else {
+      Serial.print(tempC, 1);
+    }
     Serial.print(" C | Status: ");
     Serial.println(estadoTemp);
 
