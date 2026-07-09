@@ -7,7 +7,7 @@
 
 // ─── Pinos dos sensores ──────────────────────────────────
 const int PIN_UMIDADE     = A1;
-const int PIN_TEMPERATURA = A0;   // Pino digital do DS18B20 (uso futuro)
+const int PIN_TEMPERATURA = A0; 
 
 // ─── LED RGB ─────────────────────────────────────────────
 const int PIN_RED   = 8;
