@@ -55,5 +55,9 @@ O sistema trabalha com faixas de valores analógicos (0 a 1023) lidos do HD-38, 
  
 ---
 Link do vídeo: https://drive.google.com/file/d/1bevwheS0CeeBoGKLSneq2bmuX4bQqyMS/view?usp=sharing
+
+Link Slides: https://canva.link/pxrfy62i2e0yojq
+
+Link relatório: https://docs.google.com/document/d/1NSt_E15qf-I3b7oIXnGUtw7i_61VQec1/edit?usp=drivesdk&ouid=110813830369956828366&rtpof=true&sd=trueLinks to an external site.
  
 ### Projeto desenvolvido para a disciplina Trabalho Interdisciplinar I na PUC Minas Coração Eucarístico
