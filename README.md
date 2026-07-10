@@ -54,5 +54,6 @@ O sistema trabalha com faixas de valores analógicos (0 a 1023) lidos do HD-38, 
 > A avaliação final do LED RGB considera também a leitura de temperatura do DS18B20, exibindo sempre o pior estado entre umidade e temperatura.
  
 ---
+Link do vídeo: https://drive.google.com/file/d/1bevwheS0CeeBoGKLSneq2bmuX4bQqyMS/view?usp=sharing
  
 ### Projeto desenvolvido para a disciplina Trabalho Interdisciplinar I na PUC Minas Coração Eucarístico
